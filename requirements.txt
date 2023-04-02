@@ -1,0 +1,4 @@
+beautifulsoup4==4.12.0
+openai==0.10.3
+requests==2.26.0
+virtualenv==20.7.0
