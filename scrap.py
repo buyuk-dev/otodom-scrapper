@@ -26,7 +26,7 @@ Price breakdown:
 """
 
 
-def find_tags_with_attribute(html, attribute, soup=None):
+def find_tags_with_attribute(html, attribute, element=None, valueFilter=None, soup=None):
     """ 
     """
     if soup is None:
@@ -35,8 +35,13 @@ def find_tags_with_attribute(html, attribute, soup=None):
     tags_with_attribute = []
 
     for tag in soup.find_all(True):
-        if attribute in tag.attrs:
-            tags_with_attribute.append(tag)
+        if attribute in tag.attrs and (element is None or element == tag.name):
+            if element is None or tag.name == element:
+                if valueFilter is not None:
+                    if all(value != tag.get(attribute) for value in valueFilter):
+                        continue
+
+                tags_with_attribute.append(tag)
 
     return tags_with_attribute
 
@@ -152,14 +157,12 @@ Details:
     return formatted
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("url")
-    args = parser.parse_args()
-
-    apartment_data = parse_otodom_ad_url(args.url)
+def scrap_ad(url):
+    """ Function to scrap single apartment ad from its url.
+    """
+    apartment_data = parse_otodom_ad_url(url)
     grouped_apartment_data = group_otodom_ad_data(apartment_data)
-    grouped_apartment_data["URL"] = args.url
+    grouped_apartment_data["URL"] = url
 
     formatted_data = format_mapped_ad_data(grouped_apartment_data)
     summary = generate_summary(formatted_data)
@@ -170,5 +173,41 @@ def main():
     print("============================================")
 
 
+def scrap_search_results(url):
+    """ Function to scrap search result list (retrieve url's of all result ads).
+    """
+    html = requests.get(url).text
+    soup = BeautifulSoup(html, "html.parser")
+
+    pagination_nav = find_tags_with_attribute(html, "data-cy", "nav", ["pagination"], soup)
+    #pprint(pagination_nav)
+
+    promoted_divs = find_tags_with_attribute(html, "data-cy", "div", ["search.listing.promoted"], soup)
+    #pprint(promoted_divs)
+
+    organic_divs = find_tags_with_attribute(html, "data-cy", "div", ["search.listing.organic"], soup)
+    #pprint(organic_divs)
+
+    
+    
+
+    #tags = find_tags_with_attribute(
+    #    html, "data-cy", "div",
+    #    [
+    #     "search-list-pagination",
+    #     "search.listing.promoted",
+    #      "search.listing.organic",
+    #    ],
+    #    soup
+    #)
+
+    results = None
+
+
+
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("url")
+    args = parser.parse_args()
+    #scrap_ad(args.url)
+    scrap_search_results(args.url)
