@@ -191,12 +191,12 @@ def group_otodom_ad_data(data):
         "table-label-content": "Details"
     }
     mapped = {
-        key_mapping.get(k, k): (v) for k, v in grouped.items()
+        key_mapping.get(k, k): flatten(v) for k, v in grouped.items()
     }
 
     details = mapped["Details"]
     details = pairs_to_dict(details)
-    details = {k: (v) for k,v in details.items()}
+    details = {k: flatten(v) for k,v in details.items()}
 
     mapped["Details"] = details
 
@@ -204,37 +204,13 @@ def group_otodom_ad_data(data):
     return mapped
 
 
-def format_mapped_ad_data(data):
-    return json.dumps(data, sort_keys=True, indent=4, ensure_ascii=False)
-
-    details = "\n".join(f"    {k}: {v}" for k,v in data["Details"].items())
-    formatted = f"""
-URL: {data['URL']}
-Title: {data['Title']}
-Price: {data['Price']}
-Description: {data['Description']}
-Details:
-{details}
-"""
-    return formatted
-
-
-def scrap_ad(url, generate_summary=False):
+def scrap_ad(url, should_generate_summary=False):
     """ Function to scrap single apartment ad from its url.
     """
     apartment_data = parse_otodom_ad(url)
     grouped_apartment_data = group_otodom_ad_data(apartment_data)
     grouped_apartment_data["URL"] = url
-
-    formatted_data = format_mapped_ad_data(grouped_apartment_data)
-    print(formatted_data)
-
-    if generate_summary:
-
-        summary = generate_summary(formatted_data)
-        print("============================================")
-        print("\n".join(summary.splitlines()))
-        print("============================================")
+    return grouped_apartment_data
 
 
 def scrap_search_results_page(url):
@@ -312,25 +288,46 @@ def scrap_search_results(current_page_url):
     return set(all_urls)
 
 
+def format_ad_data(data, output_file_path=None):
+    json_str = json.dumps(data, sort_keys=True, indent=4, ensure_ascii=False)
+
+    if output_file_path is not None:
+        with open(output_file_path, "w+") as outf:
+            outf.write(json_str)
+
+    return json_str
+
+
 def handle_single_ad_url(url):
     """ Scrap data from single apartment ad url.
     """
     logging.info("parsing single ad: %s", url)
     data = scrap_ad(url)
-    pprint(data)
+    print(format_ad_data(data))
 
 
-def handle_url_list_file(path):
+def handle_url_list_file(path, output_directory):
     """ Take file path containing list of ad urls to process and process them.
     """
     logging.info("parsing ads from url list file: %s", path)
 
     with open(path) as ad_urls_file:
-
         for idx, line in enumerate(ad_urls_file):
-            url_path = line.strip()
-            url = f"https://www.otodom.pl{url_path}"
-            scrap_ad(url)
+            try:
+                url_path = line.strip()
+                url = f"https://www.otodom.pl{url_path}"
+
+                output_file_path = f"{output_directory}/{idx}.json"
+
+                data = scrap_ad(url)
+                print(format_ad_data(data, output_file_path))
+
+                if False:
+                    summary = generate_summary(formatted_data)
+                    print(summary)
+
+            except Exception as err:
+                logging.exception("Failed to process url #%d: %s.", idx, line)
 
 
 def handle_search_results_url(url):
@@ -357,10 +354,10 @@ def resolve_command_handler(args):
     elif args.subcommand == 'parse':
 
         if is_url(args.input):
-            return lambda: handle_single_ad_url(args.input)
+            return lambda: handle_single_ad_url(args.input, args.output)
 
         else:
-            return lambda: handle_url_list_file(args.input)
+            return lambda: handle_url_list_file(args.input, args.output)
 
 
 def main():
@@ -376,6 +373,7 @@ def main():
     # Subparser for the 'parse' command
     parse_parser = subparsers.add_parser('parse', help='Process apartment ads')
     parse_parser.add_argument('input', help='Path to the file containing a list of URLs or a single URL')
+    parse_parser.add_argument('-o', '--output', type=str, help='When processing list of urls will act as an output directory, for single url its a file path.')
 
     args = parser.parse_args()
 
