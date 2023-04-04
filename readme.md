@@ -1,3 +1,5 @@
+# Script usage:
+
 usage: scrap.py [-h] {scan,parse} ...
 
 Apartment scraper script
@@ -27,3 +29,12 @@ optional arguments:
   -h, --help            show this help message and exit
   -o OUTPUT, --output OUTPUT
                         When processing list of urls will act as an output directory, for single url its a file path.
+
+
+# Dependencies:
+
+1. Chrome Web driver for your chrome version
+2. Selenium
+3. Requests
+4. BeautifulSoup4
+5. OpenAI API client library
