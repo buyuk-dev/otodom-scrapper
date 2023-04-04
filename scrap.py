@@ -2,6 +2,7 @@ import sys
 import argparse
 import time
 import logging
+import json
 from pprint import pprint, pformat
 
 from bs4 import BeautifulSoup
@@ -60,12 +61,12 @@ def get_dynamic_content(url):
 
     soup = BeautifulSoup(driver.page_source, 'html.parser')
     driver.quit()
-    
+
     return soup
 
 
 def find_tags_with_attribute(html, attribute, element=None, valueFilter=None, soup=None):
-    """ 
+    """
     """
     if soup is None:
         soup = BeautifulSoup(html, 'html.parser')
@@ -128,7 +129,7 @@ def parse_otodom_ad(url):
 
         # Filter out unwanted data-cy values.
         if any(value in type_ for value in [
-            "navbar", "button", "AdUnit", "AdUnit"
+            "navbar", "button", "AdUnit", "AdUnit", "ad-page-ad-remote-service-tile"
         ]):
             continue
 
@@ -143,6 +144,21 @@ def parse_otodom_ad(url):
             data = tag.get_text(strip=True)
 
         expanded.append((type_, data))
+
+    # add info about ad publication date and last updated date.
+    def contains_text_filter(tag, text, tagname="div"):
+        return tag.name == tagname and text in tag.get_text()
+
+    with open("page.html", "w") as pf:
+        pf.write(soup.prettify())
+
+    # not possible to parase these tags as they are dynamically generated with JS.
+    # publishedTag = soup.find(string="Data dodania:")
+    # updatedTag = soup.find(string="Data aktualizacji:")
+    #if publishedTag is not None:
+    #    expanded.append(("published", publishedTag.get_text()))
+    #if updatedTag is not None:
+    #    expanded.append(("lastUpdated", updatedTag.get_text()))
 
     return expanded
 
@@ -160,6 +176,11 @@ def pairs_to_dict(pairs):
     return result
 
 
+def flatten(data):
+    if len(data) == 1: return data[0]
+    else: return data
+
+
 def group_otodom_ad_data(data):
     grouped = pairs_to_dict(data)
 
@@ -170,16 +191,22 @@ def group_otodom_ad_data(data):
         "table-label-content": "Details"
     }
     mapped = {
-        key_mapping.get(k, k): v for k, v in grouped.items()
+        key_mapping.get(k, k): (v) for k, v in grouped.items()
     }
 
     details = mapped["Details"]
-    mapped["Details"] = pairs_to_dict(details)
+    details = pairs_to_dict(details)
+    details = {k: (v) for k,v in details.items()}
+
+    mapped["Details"] = details
+
 
     return mapped
 
 
 def format_mapped_ad_data(data):
+    return json.dumps(data, sort_keys=True, indent=4, ensure_ascii=False)
+
     details = "\n".join(f"    {k}: {v}" for k,v in data["Details"].items())
     formatted = f"""
 URL: {data['URL']}
@@ -192,7 +219,7 @@ Details:
     return formatted
 
 
-def scrap_ad(url):
+def scrap_ad(url, generate_summary=False):
     """ Function to scrap single apartment ad from its url.
     """
     apartment_data = parse_otodom_ad(url)
@@ -200,12 +227,14 @@ def scrap_ad(url):
     grouped_apartment_data["URL"] = url
 
     formatted_data = format_mapped_ad_data(grouped_apartment_data)
-    #summary = generate_summary(formatted_data)
-    
     print(formatted_data)
-    print("============================================")
-    print("\n".join(summary.splitlines()))
-    print("============================================")
+
+    if generate_summary:
+
+        summary = generate_summary(formatted_data)
+        print("============================================")
+        print("\n".join(summary.splitlines()))
+        print("============================================")
 
 
 def scrap_search_results_page(url):
@@ -312,6 +341,7 @@ def handle_search_results_url(url):
     for url in urls:
         print(url)
 
+
 def is_url(text):
     """ Determine whether given string is an url (as opposed to file path)
     """
@@ -328,7 +358,7 @@ def resolve_command_handler(args):
 
         if is_url(args.input):
             return lambda: handle_single_ad_url(args.input)
- 
+
         else:
             return lambda: handle_url_list_file(args.input)
 
