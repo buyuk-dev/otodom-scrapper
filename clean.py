@@ -3,9 +3,8 @@ import requests
 from bs4 import BeautifulSoup, Comment
 
 
-def clean_html(url):
-    response = requests.get(url)
-    soup = BeautifulSoup(response.text, "html.parser")
+def clean_html(html):
+    soup = BeautifulSoup(html, "html.parser")
 
     # Remove all <script> and <style> tags
     for tag in soup(["script", "style"]):
@@ -28,7 +27,16 @@ def clean_html(url):
 
 
 # Example usage
-url = sys.argv[1]
-cleaned_html = clean_html(url)
+source = sys.argv[1]
+html = None
+if source.startswith("http"):
+    url = source
+    html = requests.get(url).text
+
+else:
+    with open(source) as html_file:
+        html = html_file.read()
+
+cleaned_html = clean_html(html)
 print(cleaned_html)
 
