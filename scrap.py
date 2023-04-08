@@ -4,6 +4,7 @@ import argparse
 import time
 import logging
 import json
+from jsoncomment import JsonComment
 from pprint import pprint, pformat
 
 from bs4 import BeautifulSoup
@@ -16,24 +17,9 @@ import openai
 
 import secrets
 
+json = JsonComment(json)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
 openai.api_key = secrets.OPENAI_API_KEY
-
-
-#DEFAULT_SUMMARY_PROMPT = """
-#Calculate the price breakdown for the apartment based on the given data.
-#Data labels are in english, but all text is written in polish language.
-#Price breakdown should be in json format where price is represented as a tuple: price and unit.
-#Include the following information in the breakdown (names in polish) czynsz najmu, czynsz administracyjny, opaty za media, oraz pozostałe.
-#Specify what are the costs included in "Pozostałe" category.
-#
-#Data:
-#---------------
-#{}
-#---------------
-#Price breakdown:
-#"""
 
 DEFAULT_SUMMARY_PROMPT = """
 I will give you a json description of a polish apartment ad scrapped from a website. Property names are in english, but the content is in polish.
@@ -398,13 +384,73 @@ class CommandHandlers:
     @staticmethod
     def summarize_ads_dir(input_dir, prompt=None, output=None):
         for filename in os.listdir(input_dir):
-            path = os.path.join(input_dir, filename)
-            if os.path.isfile(path):
-                logging.info("processing %s", path)
-                summary = CommandHandlers.summarize_ad_data(path, prompt, output)
-                with open(path + ".ai", "w") as output_file:
-                    output_file.write(summary)
+            try:
+                path = os.path.join(input_dir, filename)
+                output_path = path + ".ai"
+                if os.path.isfile(output_path):
+                    logging.warning("File %s exists. Please remove it if you want to regenerate the summary.", output_path)
+                    continue
 
+                if os.path.isfile(path):
+                    logging.info("processing %s", path)
+                    summary = CommandHandlers.summarize_ad_data(path, prompt, output)
+                    with open(output_path, "w") as output_file:
+                        output_file.write(summary)
+            except Exception as e:
+                logging.exception("Error has occured while summarizing ads.")
+
+
+    @staticmethod
+    def handle_filter_command(input_dir, priceLimit, output=None):
+        """ Filter only ads which are below total price limit.
+        """
+        logging.info("Filtering ads which have a total price higher than %d PLN.", priceLimit)
+        filtered = []
+        for filename in os.listdir(input_dir):
+            try:
+                path = os.path.join(input_dir, filename)
+                if not (path.endswith('.json.ai') and os.path.isfile(path)):
+                    continue
+
+                json_data = None
+                with open(path, "r", encoding="utf-8") as json_file:
+                    json_data = json.load(json_file)
+
+                def sanitize(value):
+                    if type(value) in (float, int):
+                        return value
+
+                    if type(value) is str:
+                        try:
+                            return float(value)
+                        except:
+                            return 0
+                    else:
+                        return 0
+
+                total_price = sanitize(json_data["Price"]["Rent"]) + \
+                              sanitize(json_data["Price"]["Administrative"]) + \
+                              sanitize(json_data["Price"]["Parking"])
+
+                json_data["path"] = path
+                json_data["totalPrice"] = total_price
+
+                if total_price <= priceLimit:
+                    filtered.append(json_data)
+
+            except Exception as e:
+                logging.exception("Error has occured while summarizing ads.")
+
+        filtered.sort(key=lambda x: x["totalPrice"])
+
+        logging.debug("Filtered list contains %d ads.", len(filtered))
+        json_data = json.dumps(filtered, sort_keys=True, indent=4, ensure_ascii=False)
+
+        if output is None:
+            print(json_data)
+        else:
+            with open(output, "w", encoding="utf-8") as json_file:
+                json_file.write(json_data)
 
 
 def resolve_command_handler(args):
@@ -427,6 +473,8 @@ def resolve_command_handler(args):
         else:
             return lambda: CommandHandlers.summarize_ads_dir(args.input, args.prompt, args.output)
 
+    elif args.subcommand == 'filter':
+        return lambda: CommandHandlers.handle_filter_command(args.input, args.limit, args.output)
 
 
 def main():
@@ -449,6 +497,12 @@ def main():
     gpt_parser.add_argument("input", help="Path to the file or directory containing scrapped apartment data.")
     gpt_parser.add_argument("-p", "--prompt", type=str, help="Overrides default prompt for GPT.")
     gpt_parser.add_argument("-o", "--output", type=str, help="Output file path.")
+
+    # Subparer for the 'filter' command
+    filter_parser = subparsers.add_parser('filter', help="Filter ads stored in json files in the input directory.")
+    filter_parser.add_argument("input", help="Path to the directory containing ad.json.ai files.")
+    filter_parser.add_argument("-o", "--output", type=str, help="Output file path.")
+    filter_parser.add_argument("-l", "--limit", type=int, default=3000, help="Upper limit for the total price.")
 
     args = parser.parse_args()
 
