@@ -4,6 +4,36 @@ document.addEventListener('DOMContentLoaded', () => {
         .then(data => {
             loadTableData(data);
         });
+
+    // Initialize interact.js for resizable sidebar
+    interact('#sidebar').resizable({
+        edges: { left: true },
+        modifiers: [
+            interact.modifiers.restrictEdges({
+                outer: 'parent',
+                endOnly: true,
+            }),
+            interact.modifiers.restrictSize({
+                min: { width: 150 },
+                max: { width: window.innerWidth - 100 }
+            })
+        ],
+        inertia: true
+    }).on('resizemove', function (event) {
+        let { x, y } = event.target.dataset;
+
+        x = (parseFloat(x) || 0) + event.deltaRect.left;
+
+        Object.assign(event.target.style, {
+            width: `${event.rect.width}px`
+        });
+
+        // Adjust the main table container width
+        const tableContainer = document.querySelector('.table-container');
+        tableContainer.style.flex = `0 0 ${window.innerWidth - event.rect.width - 10}px`;
+
+        Object.assign(event.target.dataset, { x, y });
+    });
 });
 
 function loadTableData(apartments) {
@@ -26,15 +56,18 @@ function loadTableData(apartments) {
 }
 
 function showAdDetails(url, index) {
+    console.log(`Fetching HTML for URL: ${url}`);
     fetch(`/fetch-html?url=${encodeURIComponent(url)}`)
         .then(response => response.text())
         .then(html => {
-            const adDetails = document.getElementById('adDetails');
-            adDetails.innerHTML = html;
+            const iframe = document.getElementById('adIframe');
+            iframe.srcdoc = '';  // Clear existing content
+            iframe.srcdoc = html;  // Set new content
         })
         .catch(error => {
-            const adDetails = document.getElementById('adDetails');
-            adDetails.innerHTML = `<p>Error fetching the ad details.</p>`;
+            console.error('Error fetching HTML:', error);
+            const iframe = document.getElementById('adIframe');
+            iframe.srcdoc = '<p>Error fetching the ad details.</p>';
         });
 }
 

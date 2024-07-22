@@ -68,39 +68,27 @@ app.get('/fetch-html', async (req, res) => {
             'Accept-Language': 'en-US,en;q=0.9',
         });
 
-        // Disable loading of images, stylesheets, and other non-essential resources
+        // Allow all resources to load, including images
         await page.setRequestInterception(true);
         page.on('request', (request) => {
-            if (['image', 'stylesheet', 'font'].includes(request.resourceType())) {
+            if ([].includes(request.resourceType())) {
                 request.abort();
             } else {
                 request.continue();
             }
         });
 
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 2000 });
+        await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
 
-        // Retry logic for better handling dynamic content loading
-        let consentButtonFound = false;
-        for (let retries = 0; retries < 3; retries++) {
-            try {
-                //await page.waitForSelector('#onetrust-accept-btn-handler', { timeout: 20000 });
-                await page.click('#onetrust-accept-btn-handler');
-                consentButtonFound = true;
-                break;
-            } catch (e) {
-                console.log(`Consent button not found, attempt ${retries + 1}`);
-            }
+        // Click the consent button if it appears
+        try {
+            //await page.waitForSelector('#onetrust-accept-btn-handler', { timeout: 10000 });
+            //await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 5000 });
+            //await page.click('#onetrust-accept-btn-handler');
+        } catch (e) {
+            console.log('Consent button not found, continuing without clicking it.');
         }
 
-        if (!consentButtonFound) {
-            console.log('Consent button not found, logging page content for debugging...');
-            const pageContent = await page.content();
-            console.log(pageContent);
-        }
-
-        // Ensure the page is fully loaded before extracting content
-        //await page.waitForTimeout(5000); // Wait for additional content load
         const content = await page.content();
         await page.close();
         res.send(content);
