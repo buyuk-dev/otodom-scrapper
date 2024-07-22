@@ -30,30 +30,73 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Adjust the main table container width
         const tableContainer = document.querySelector('.table-container');
-        tableContainer.style.flex = `0 0 ${window.innerWidth - event.rect.width - 10}px`;
+        tableContainer.style.flex = `0 0 ${window.innerWidth - event.rect.width - 20}px`;
 
         Object.assign(event.target.dataset, { x, y });
     });
 });
 
 function loadTableData(apartments) {
-    const tableBody = document.getElementById('tableBody');
-    tableBody.innerHTML = '';
+    const container = document.getElementById('handsontable-container');
 
-    apartments.forEach((apartment, index) => {
-        let row = `
-            <tr onclick="showAdDetails('${apartment.gpt.URL}', ${index})">
-                <td>${apartment.gpt.Title}</td>
-                <td>${apartment.gpt.Location}</td>
-                <td>${apartment.gpt.Size}</td>
-                <td>${apartment.gpt.Price.Rent} zł</td>
-                <td>${apartment.gpt.Price.Administrative} zł</td>
-                <td><a href="${apartment.gpt.URL}" target="_blank">View Listing</a></td>
-            </tr>
-        `;
-        tableBody.innerHTML += row;
+    function parseNumber(str) {
+        const match = str.match(/^(\d+(\.\d+)?)/);
+        return match ? parseFloat(match[0]) : undefined;
+    }
+
+    const data = apartments.map(apartment => [
+        apartment.gpt.Title,
+        apartment.gpt.Location,
+        parseNumber(apartment.gpt.Size),
+        parseNumber(apartment.gpt.Price.Rent) + parseNumber(apartment.gpt.Price.Administrative),
+        parseNumber(apartment.gpt.Price.Rent),
+        parseNumber(apartment.gpt.Price.Administrative),
+        apartment.gpt.URL
+    ]);
+
+    const hot = new Handsontable(container, {
+        data: data,
+        colHeaders: ['Title', 'Location', 'Size', 'Total Price', 'Rent Price', 'Administrative Costs', 'URL'],
+        columns: [
+            { type: 'text' },
+            { type: 'text' },
+            { type: 'numeric', numericFormat: { pattern: '0,0' } },
+            { type: 'numeric', numericFormat: { pattern: '0,0' } },
+            //{ type: 'text' },
+            //{ type: 'text' },
+            { type: 'numeric', numericFormat: { pattern: '0,0' } },
+            { type: 'numeric', numericFormat: { pattern: '0,0' } },
+            {
+                renderer: urlRenderer,
+                readOnly: true
+            }
+        ],
+        stretchH: 'all',
+        autoColumnSize: true,
+        manualColumnResize: true,
+        manualRowResize: true,
+        columnSorting: true,
+        filters: true,
+        dropdownMenu: true,
+        afterSelectionEnd: function (row, col, row2, col2) {
+            if (row === row2 && col === col2) { // Ensure single cell selection
+                // When a row is selected, fetch and render the ad details
+                const visualRowIndex = this.toPhysicalRow(row);
+                const selectedData = data[visualRowIndex];
+                const url = selectedData[6]; // Ensure this is the correct column for URL
+                showAdDetails(url);
+            }
+        },
+        licenseKey: 'non-commercial-and-evaluation'  // Set the license key
     });
+
+    function urlRenderer(instance, td, row, col, prop, value, cellProperties) {
+        Handsontable.renderers.TextRenderer.apply(this, arguments);
+        td.innerHTML = `<a href="${value}" target="_blank">open</a>`;
+    }
 }
+
+
 
 function showAdDetails(url, index) {
     console.log(`Fetching HTML for URL: ${url}`);
@@ -71,59 +114,25 @@ function showAdDetails(url, index) {
         });
 }
 
+
 function filterTable() {
     const filter = document.getElementById('locationFilter').value.toUpperCase();
-    const rows = document.getElementById('tableBody').getElementsByTagName('tr');
+    const hot = Handsontable.getInstance(document.getElementById('handsontable-container'));
 
-    for (let i = 0; i < rows.length; i++) {
-        const cells = rows[i].getElementsByTagName('td');
-        const location = cells[1].textContent || cells[1].innerText;
-        if (location.toUpperCase().indexOf(filter) > -1) {
-            rows[i].style.display = "";
-        } else {
-            rows[i].style.display = "none";
+    hot.addHook('afterGetColHeader', function (col, TH) {
+        if (col === 1) { // Assuming 'Location' is the second column
+            const instance = this;
+            TH.innerHTML = `<input type="text" class="handsontable-input-filter" placeholder="Filter location">`;
+            TH.querySelector('input').addEventListener('keyup', function (event) {
+                instance.getPlugin('Filters').addCondition(col, 'contains', [event.target.value]);
+                instance.getPlugin('Filters').filter();
+            });
         }
-    }
+    });
+    hot.render();
 }
 
 function sortTable(columnIndex) {
-    const table = document.getElementById('apartmentTable');
-    let switching = true;
-    let shouldSwitch;
-    let rows, x, y;
-    let switchCount = 0;
-    let direction = "asc";
-
-    while (switching) {
-        switching = false;
-        rows = table.rows;
-
-        for (let i = 1; i < (rows.length - 1); i++) {
-            shouldSwitch = false;
-            x = rows[i].getElementsByTagName("TD")[columnIndex];
-            y = rows[i + 1].getElementsByTagName("TD")[columnIndex];
-
-            if (direction === "asc") {
-                if (x.innerHTML.toLowerCase() > y.innerHTML.toLowerCase()) {
-                    shouldSwitch = true;
-                    break;
-                }
-            } else if (direction === "desc") {
-                if (x.innerHTML.toLowerCase() < y.innerHTML.toLowerCase()) {
-                    shouldSwitch = true;
-                    break;
-                }
-            }
-        }
-        if (shouldSwitch) {
-            rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
-            switching = true;
-            switchCount++;
-        } else {
-            if (switchCount === 0 && direction === "asc") {
-                direction = "desc";
-                switching = true;
-            }
-        }
-    }
+    const hot = Handsontable.getInstance(document.getElementById('handsontable-container'));
+    hot.getPlugin('ColumnSorting').sort({ column: columnIndex, sortOrder: 'asc' });
 }

@@ -12,10 +12,17 @@ body {
 }
 
 .table-container {
-    flex: 1;
+    flex-grow: 1;
     padding: 20px;
-    overflow-y: auto;
+    overflow: hidden;
     transition: width 0.3s;
+}
+
+#handsontable-container {
+    width: 100%;
+    height: calc(100% - 60px); /* Adjust based on the height of other elements like headers */
+    overflow: hidden;
+    margin-top: 20px;
 }
 
 .sidebar {
