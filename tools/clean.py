@@ -1,4 +1,5 @@
 import sys
+
 import requests
 from bs4 import BeautifulSoup, Comment
 
@@ -39,4 +40,3 @@ else:
 
 cleaned_html = clean_html(html)
 print(cleaned_html)
-

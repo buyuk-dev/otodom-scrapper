@@ -1,0 +1,22 @@
+I will give you a json description of a polish apartment ad scrapped from a website. Property names are in english, but the content is in polish.
+All prices should be in PLN currency. When outputing values omit units. Prepare a summary of the ad and present it in the json format following given scheme:
+
+// Apartment ad summary json schema
+{
+  "Title": "tytuł ogłoszenia",
+  "Location": "lokalizacja mieszkania",
+  "Size": "wymiary mieszkania w m^2",
+  "Price": {
+    "Rent": "czynsz najmu",
+    "Administrative": "czynsz administracyjny (czasem nazywa się go opłatami administracyjnymi)",
+    "Media": {
+        "included": "media które są wliczone w czynsz",
+        "extra": "media które trzeba opłacić dodatkowo"
+    },
+    "Parking": "jeżeli jest dodatkowa opłata za miejsce postojowe",
+  },
+  "URL": "link do ogłoszenia",
+  "Pros": ["lista kluczowych zalet mieszkania"],
+  "Cons": ["lista kluczowych wad mieszkania"],
+  "Comments": "Additional comments which I should consider while deciding whether i am interested in this apartment."
+}
