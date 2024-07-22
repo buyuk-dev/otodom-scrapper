@@ -38,3 +38,16 @@ optional arguments:
 3. Requests
 4. BeautifulSoup4
 5. OpenAI API client library
+
+
+# Install selenium driver:
+
+brew install selenium-server
+
+# Run selenium server:
+
+selenium-server -port 4444
+
+# Autorun selenium:
+
+brew services start selenium-server-standalone

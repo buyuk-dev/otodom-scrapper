@@ -15,11 +15,52 @@ from selenium.webdriver.common.keys import Keys
 import requests
 import openai
 
-import secrets
-
 json = JsonComment(json)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-openai.api_key = secrets.OPENAI_API_KEY
+#openai.api_key = os.environ.get("OPENAI_API_KEY")
+
+
+# import requests
+
+# Note: Regular `requests` module fails to download content from telemagazyn.pl and other websites while running inside docker container.
+# Some websites detect browser fingerprints and only allow mainstream browser to access their content to prevent bot access.
+# curl_cffi module mitigates this issue to some degree by attempting to impersonate such a browser. It enabled successful download of telemagazyn.pl
+# sites while running inside docker container.
+from curl_cffi import requests
+
+
+class ScraperError(Exception):
+    pass
+
+
+class BaseScraper:
+
+    def __init__(self):
+        pass
+
+    def download_url(self, url: str) -> str:
+        headers = {
+            "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+            "accept-language": "en-US,en;q=0.9",
+            "priority": "u=0, i",
+            "sec-ch-ua": '"Not/A)Brand";v="8", "Chromium";v="126", "Microsoft Edge";v="126"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"macOS"',
+            "sec-fetch-dest": "document",
+            "sec-fetch-mode": "navigate",
+            "sec-fetch-site": "none",
+            "sec-fetch-user": "?1",
+            "upgrade-insecure-requests": "1",
+        }
+
+        response = requests.get(
+            url, headers=headers, timeout=5, impersonate="chrome110"
+        )
+
+        response.raise_for_status()
+
+        return response.text
+
 
 DEFAULT_SUMMARY_PROMPT = """
 I will give you a json description of a polish apartment ad scrapped from a website. Property names are in english, but the content is in polish.
@@ -99,19 +140,33 @@ def find_tags_with_attribute(html, attribute, element=None, valueFilter=None, so
     return tags_with_attribute
 
 
+def filter_ad_json_props(ad_dict: dict) -> dict:
+    ALLOW = {"Description", "Details", "Location", "Title", "Price", "URL"}
+    filtered = {
+        k: v for k,v in ad_dict.items() if k in ALLOW
+    }
+    return filtered
+
+
 def generate_summary(text, prompt):
     """ Use OpenAI GPT API to process scrapped ad data.
     """
-    response = openai.Completion.create(
-        engine="text-davinci-003",
-        prompt=prompt + text,
+    messages = [
+        { "role": "system", "content": prompt },
+        { "role": "user", "content": text }
+    ]
+
+    completion = openai.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=messages,
+        temperature=0.2,
         max_tokens=1000,
-        n=1,
         stop=None,
-        temperature=0,
+        response_format={"type": "json_object"},
     )
-    summary = response.choices[0].text.strip()
-    return summary
+
+    summary = completion.choices[0].message.content.strip()
+    return json.loads(summary)
 
 
 def parse_labeled_content(tag):
@@ -126,7 +181,9 @@ def parse_labeled_content(tag):
 def parse_otodom_ad(url):
     """ Attempt to parse otodom ad data from html.
     """
-    html = requests.get(url).text
+    html = BaseScraper().download_url(url)
+    print(html)
+
     soup = BeautifulSoup(html, "html.parser")
 
     # Assumption: all useful data is contained within tags that have data-cy attribute.
@@ -227,8 +284,11 @@ def scrap_ad(url):
     """ Function to scrap single apartment ad from its url.
     """
     apartment_data = parse_otodom_ad(url)
+    logging.info(apartment_data)
+
     grouped_apartment_data = group_otodom_ad_data(apartment_data)
     grouped_apartment_data["URL"] = url
+
     return grouped_apartment_data
 
 
@@ -266,9 +326,12 @@ def get_page_number_from_url(url):
     """
     from urllib import parse
 
-    current_page_num = int(parse.parse_qs(
-        parse.urlparse(url).query
-    )['page'][0])
+    try:
+        current_page_num = int(parse.parse_qs(
+            parse.urlparse(url).query
+        )['page'][0])
+    except:
+        return 1
 
     return current_page_num
 
@@ -366,19 +429,23 @@ class CommandHandlers:
 
 
     @staticmethod
-    def summarize_ad_data(input_path, prompt=None, output=None):
+    def summarize_ad_data(input_path, prompt=None, output=None) -> dict:
         """
         """
-        json_str = None
+        ad_data = None
         with open(input_path, "r", encoding="utf-8") as jf:
-            json_str = jf.read()
+            ad_data = json.load(jf)
+
+        ad_data = filter_ad_json_props(ad_data)
 
         if prompt is None:
             prompt = DEFAULT_SUMMARY_PROMPT
 
-        summary_raw = generate_summary(json_str, prompt)
-        print(summary_raw)
-        return summary_raw
+        formatted_json_ad = json.dumps(ad_data, ensure_ascii=False, indent=2)
+        summary = generate_summary(formatted_json_ad, prompt)
+
+        logging.info(json.dumps(summary, ensure_ascii=False, indent=2))
+        return summary
 
 
     @staticmethod
@@ -386,16 +453,17 @@ class CommandHandlers:
         for filename in os.listdir(input_dir):
             try:
                 path = os.path.join(input_dir, filename)
-                output_path = path + ".ai"
+                output_path = os.path.join(output, f"{filename}.ai")
                 if os.path.isfile(output_path):
                     logging.warning("File %s exists. Please remove it if you want to regenerate the summary.", output_path)
                     continue
 
-                if os.path.isfile(path):
-                    logging.info("processing %s", path)
-                    summary = CommandHandlers.summarize_ad_data(path, prompt, output)
-                    with open(output_path, "w") as output_file:
-                        output_file.write(summary)
+                logging.info("processing %s", path)
+                summary = CommandHandlers.summarize_ad_data(path, prompt, output)
+                    
+                with open(output_path, "w", encoding="utf-8") as output_file:
+                    json.dump(summary, output_file, ensure_ascii=False)
+
             except Exception as e:
                 logging.exception("Error has occured while summarizing ads.")
 

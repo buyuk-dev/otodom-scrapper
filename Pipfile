@@ -1,0 +1,19 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+beautifulsoup4 = "==4.12.0"
+openai = "*"
+requests = "==2.26.0"
+virtualenv = "==20.7.0"
+jsoncomment = "*"
+selenium = "*"
+curl-cffi = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.12"
+python_full_version = "3.12.3"
